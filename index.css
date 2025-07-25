@@ -1,0 +1,503 @@
+:root {
+    --bg-color: #0a0f18;
+    --panel-bg-color: rgba(15, 25, 40, 0.85);
+    --border-color: #00ffff;
+    --text-color: #e0e0e0;
+    --font-family: 'Orbitron', sans-serif;
+
+    --color-attribute: #87ceeb;
+    --color-skill: #ffa500;
+    --color-bonus: #90ee90;
+
+    --color-crit: #00ff7f; /* SpringGreen */
+    --color-fail: #dc143c; /* Crimson */
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    background-color: var(--bg-color);
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-family);
+    color: var(--text-color);
+}
+
+body {
+    background-color: transparent;
+}
+
+#bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    outline: none;
+    z-index: -1;
+}
+
+/* --- Launcher View --- */
+#launcher {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 40px;
+    background-color: var(--panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
+    text-align: center;
+    width: 90%;
+    max-width: 600px;
+}
+
+.launcher-title h1 {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--border-color);
+    text-shadow: 0 0 10px var(--border-color);
+    margin-bottom: 10px;
+}
+
+.launcher-title h2 {
+    font-size: 24px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    opacity: 0.8;
+}
+
+.launcher-section {
+    width: 100%;
+}
+
+.launcher-section h3 {
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--border-color);
+    opacity: 0.9;
+}
+
+.launcher-section p {
+    font-size: 14px;
+    margin-bottom: 10px;
+    opacity: 0.8;
+}
+
+.session-input-group {
+    display: flex;
+    width: 100%;
+}
+
+#session-url-input, #player-name-input {
+    flex-grow: 1;
+    background-color: rgba(10, 15, 24, 0.8);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    padding: 10px;
+    border-radius: 4px 0 0 4px;
+    font-size: 14px;
+}
+#session-url-input:focus, #player-name-input:focus {
+    outline: none;
+    box-shadow: 0 0 8px var(--border-color);
+}
+
+#copy-url-button, #join-game-button {
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+    padding: 10px 15px;
+}
+
+
+#gm-button-container button {
+    width: 100%;
+}
+
+/* --- Player/GM UI Container --- */
+#ui-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    background: linear-gradient(to top, rgba(10, 15, 24, 0.95), transparent);
+    z-index: 10;
+    pointer-events: none;
+    overflow: visible; /* Allow animation out of bounds */
+}
+
+#main-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    transition: transform 0.4s ease-in-out, opacity 0.4s ease-in-out;
+}
+
+#main-controls.hidden {
+    transform: translateY(110%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.control-panel, .action-panel {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 15px 25px;
+    border: 1px solid var(--border-color);
+    background-color: var(--panel-bg-color);
+    backdrop-filter: blur(5px);
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+    pointer-events: auto;
+}
+
+.control-panel {
+    margin-bottom: 20px;
+    position: relative;
+    padding-right: 45px; /* Added space for the hide button */
+}
+
+.dice-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.dice-group label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 14px;
+}
+
+#attribute-group label { color: var(--color-attribute); }
+#skill-group label { color: var(--color-skill); }
+#bonus-group label { color: var(--color-bonus); }
+
+.input-wrapper input[type="number"] {
+    background-color: #0a0f18;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    font-size: 24px;
+    width: 80px;
+    padding: 5px;
+    text-align: center;
+    border-radius: 2px;
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.results {
+    font-size: 12px;
+    text-align: center;
+    min-height: 30px;
+}
+
+.results span {
+    display: block;
+}
+
+.results .crit {
+    color: var(--color-crit);
+}
+
+.results .fail {
+    color: var(--color-fail);
+}
+
+
+button {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--border-color);
+    font-family: var(--font-family);
+    font-size: 16px;
+    padding: 10px 20px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+    pointer-events: auto;
+}
+
+button:hover, button:focus {
+    background-color: var(--border-color);
+    color: var(--bg-color);
+    box-shadow: 0 0 10px var(--border-color);
+    outline: none;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* UI Toggle Styles */
+.collapsed-panel {
+    display: none; /* Hidden by default */
+    position: absolute;
+    bottom: 20px;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border: 1px solid var(--border-color);
+    background-color: var(--panel-bg-color);
+    backdrop-filter: blur(5px);
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+    pointer-events: auto;
+    font-size: 16px;
+    letter-spacing: 1px;
+}
+
+.collapsed-panel.visible {
+    display: flex; /* Shown via JS */
+}
+
+.name-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-grow: 1;
+}
+
+#player-name-display {
+    font-weight: bold;
+    color: var(--border-color);
+}
+
+#player-name-edit-input {
+    background-color: #0a0f18;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    width: 150px;
+}
+
+#save-name-button {
+    padding: 4px 12px;
+    font-size: 14px;
+}
+
+.icon-button {
+    background: none;
+    border: none;
+    color: var(--border-color);
+    font-size: 18px;
+    padding: 0 5px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.icon-button:hover {
+    opacity: 1;
+    background: none;
+    box-shadow: none;
+}
+
+
+.ui-toggle-button {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--border-color);
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    line-height: 1;
+}
+
+#hide-ui-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+#show-ui-button {
+    position: static;
+}
+
+/* Roll Log for GM View */
+#roll-log-container {
+    display: none; /* Hidden by default */
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 350px;
+    height: 510px;
+    background-color: var(--panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 15px;
+    z-index: 5;
+    overflow-y: auto;
+    pointer-events: auto;
+    /* Firefox Scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+/* WebKit (Chrome, Safari) Scrollbar */
+#roll-log-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#roll-log-container::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+#roll-log-container::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
+    border: 2px solid var(--panel-bg-color); /* Creates padding effect */
+    background-clip: padding-box;
+}
+
+#roll-log-container::-webkit-scrollbar-thumb:hover {
+    background-color: #2effff;
+}
+
+
+/* --- View-specific Visibility --- */
+body.is-launcher #launcher { display: flex; }
+body.is-player #launcher,
+body.is-gm #launcher { display: none; }
+
+body.is-player #ui-container { display: flex; }
+body.is-launcher #ui-container,
+body.is-gm #ui-container { display: none; }
+
+body.is-gm #roll-log-container { display: block; }
+body.is-launcher #roll-log-container,
+body.is-player #roll-log-container { display: none; }
+
+
+.roll-log-entry {
+    font-size: 14px;
+    line-height: 1.5;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    opacity: 1;
+    transition: opacity 0.5s ease-out;
+}
+
+.roll-log-entry:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.roll-log-entry.fade-out {
+    opacity: 0;
+}
+
+.roll-log-player-name {
+    font-weight: 700;
+    color: var(--border-color);
+    margin-bottom: 4px;
+}
+
+.roll-log-details {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.roll-log-results {
+    font-weight: bold;
+}
+
+
+@media (max-width: 768px) {
+    #launcher {
+        padding: 20px;
+        gap: 20px;
+    }
+    .launcher-title h1 { font-size: 36px; }
+    .launcher-title h2 { font-size: 18px; }
+
+    .session-input-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+    #session-url-input, #player-name-input {
+        border-radius: 4px;
+    }
+    #copy-url-button, #join-game-button {
+        border-radius: 4px;
+        border-left: 1px solid var(--border-color);
+    }
+
+    #ui-container {
+        padding: 10px;
+    }
+    .control-panel {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+        padding: 15px;
+        padding-right: 45px; /* Added space for hide button */
+    }
+    .dice-group {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .action-panel {
+        width: calc(100% - 20px);
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    button {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+    .collapsed-panel {
+        width: calc(100% - 20px);
+        bottom: 10px;
+    }
+    #roll-log-container {
+        width: calc(100vw - 40px);
+        top: 10px;
+        left: 10px;
+    }
+}

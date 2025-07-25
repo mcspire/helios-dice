@@ -1,0 +1,6 @@
+{
+  "name": "HELIOS Dice Roller",
+  "description": "A 3D physically-based dice rolling simulator for the HELIOS sci-fi RPG. Supports multiple dice types, special rules, and a GM view for OBS.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

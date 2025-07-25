@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HELIOS - Würfelsimulator</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://esm.sh/three@0.164.1",
+            "cannon-es": "https://esm.sh/cannon-es@0.20.0"
+        }
+    }
+    </script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <canvas id="bg"></canvas>
+
+    <div id="launcher">
+        <div class="launcher-title">
+            <h1>HELIOS</h1>
+            <h2>Würfelsimulator</h2>
+        </div>
+        <div class="launcher-section" id="session-section">
+            <h3>Session URL</h3>
+            <p>Share this URL with other players to join:</p>
+            <div class="session-input-group">
+                <input type="text" id="session-url-input" readonly>
+                <button id="copy-url-button">Copy</button>
+            </div>
+        </div>
+        <div class="launcher-section">
+            <h3>Als Spieler beitreten</h3>
+            <div id="join-player-section" class="session-input-group">
+                <input type="text" id="player-name-input" placeholder="Gib deinen Namen ein">
+                <button id="join-game-button">Beitreten</button>
+            </div>
+        </div>
+        <div class="launcher-section">
+            <h3>Spielleitung</h3>
+            <div id="gm-button-container">
+                <button id="gm-btn">GM-Ansicht öffnen</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="roll-log-container"></div>
+
+    <div id="ui-container">
+        <div id="main-controls">
+            <div class="control-panel">
+                 <button id="hide-ui-button" class="ui-toggle-button" aria-label="Hide Controls">▼</button>
+                <div class="dice-group" id="attribute-group">
+                    <label for="attribute-dice">Attributwürfel</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="attribute-dice" min="0" max="10" value="0">
+                    </div>
+                    <div class="results" id="attribute-results"></div>
+                </div>
+
+                <div class="dice-group" id="skill-group">
+                    <label for="skill-dice">Fertigkeitswürfel</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="skill-dice" min="0" max="10" value="0">
+                    </div>
+                    <div class="results" id="skill-results"></div>
+                </div>
+
+                <div class="dice-group" id="bonus-group">
+                    <label for="bonus-dice">Bonuswürfel</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="bonus-dice" min="0" max="10" value="0">
+                    </div>
+                    <div class="results" id="bonus-results"></div>
+                </div>
+            </div>
+
+            <div class="action-panel">
+                <button id="roll-button">Würfeln</button>
+                <button id="reroll-button">Neu würfeln</button>
+                <button id="clear-button">Leeren</button>
+            </div>
+        </div>
+
+        <div id="collapsed-ui" class="collapsed-panel">
+            <div id="player-name-display-container" class="name-container">
+                <span id="player-name-display"></span>
+                <button id="edit-name-button" class="icon-button" aria-label="Edit Name">✏️</button>
+            </div>
+            <div id="player-name-input-container" class="name-container" style="display: none;">
+                <input type="text" id="player-name-edit-input">
+                <button id="save-name-button">Set</button>
+            </div>
+            <button id="show-ui-button" class="ui-toggle-button" aria-label="Show Controls">▲</button>
+        </div>
+    </div>
+
+    <script type="module" src="index.js"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
