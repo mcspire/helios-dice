@@ -83,6 +83,7 @@ const RESULT_COLORS = {
 const DIE_SIZE = 0.5;
 const GRAVITY = -20;
 const SETTLE_THRESHOLD = 0.1;
+const PROCESSED_ROLL_TTL_MS = 5 * 60 * 1000;
 
 class HeliosDiceRoller {
     private renderer!: THREE.WebGLRenderer;
@@ -105,10 +106,12 @@ class HeliosDiceRoller {
         progress: number;
     }[] = [];
     private animationDuration = 1.5;
-    private processedRolls: Set<string> = new Set();
-    
+    private processedRolls: Map<string, number> = new Map();
+    private dieTextureCache: Map<string, THREE.CanvasTexture> = new Map();
+
     // Networking
     private peer: any | null = null;
+    private currentPeerId: string | null = null;
     private connections: Record<string, any> = {}; // GM stores player connections
     private gmConnection: any | null = null; // Player stores connection to GM
     private sessionId: string | null = null;
@@ -173,16 +176,25 @@ class HeliosDiceRoller {
     }
     
     private initNetworking(): void {
-        if (!this.sessionId || (!this.playerId && !this.isGMView) || this.peer) {
+        if (!this.sessionId || (!this.playerId && !this.isGMView)) {
+            this.teardownNetworking();
             return;
         }
 
-        const peerId = this.isGMView ? this.sessionId + GM_PEER_SUFFIX : `${this.sessionId}-${this.playerId}`;
-        
+        const desiredPeerId = this.isGMView ? `${this.sessionId}${GM_PEER_SUFFIX}` : `${this.sessionId}-${this.playerId}`;
+
+        if (this.peer && !this.peer.destroyed && this.currentPeerId === desiredPeerId) {
+            return;
+        }
+
+        this.teardownNetworking();
+
         try {
-            this.peer = new Peer(peerId);
-        } catch(e) {
-            console.error("Failed to initialize PeerJS. Make sure the library is loaded.", e);
+            this.peer = new Peer(desiredPeerId);
+            this.currentPeerId = desiredPeerId;
+        } catch (e) {
+            this.currentPeerId = null;
+            console.error('Failed to initialize PeerJS. Make sure the library is loaded.', e);
             return;
         }
 
@@ -192,25 +204,18 @@ class HeliosDiceRoller {
                 this.connectToGm();
             }
         });
-    
+
         this.peer.on('connection', (conn: any) => {
             if (this.isGMView) {
                 console.log(`Player ${conn.peer} connected.`);
                 this.connections[conn.peer] = conn;
                 conn.on('data', (data: BroadcastMessage) => {
-                    this.handleNetworkData(data);
+                    this.handleNetworkData(data, conn.peer);
                 });
-                conn.on('close', () => {
-                    delete this.connections[conn.peer];
-                    const playerId = Object.keys(this.playerNames).find(pId => conn.peer.endsWith(pId));
-                    if(playerId) {
-                         console.log(`Player ${this.playerNames[playerId]} (${conn.peer}) disconnected.`);
-                         delete this.playerNames[playerId];
-                    }
-                });
+                conn.on('close', () => this.handlePlayerDisconnect(conn.peer));
             }
         });
-    
+
         this.peer.on('error', (err: any) => {
             console.error('PeerJS Error:', err);
             if (err.type === 'peer-unavailable') {
@@ -219,12 +224,76 @@ class HeliosDiceRoller {
         });
     }
 
+    private teardownNetworking(): void {
+        Object.values(this.connections).forEach(conn => {
+            try {
+                conn.close();
+            } catch (error) {
+                console.warn('Error while closing player connection.', error);
+            }
+        });
+        this.connections = {};
+
+        if (this.gmConnection) {
+            try {
+                this.gmConnection.close();
+            } catch (error) {
+                console.warn('Error while closing GM connection.', error);
+            }
+            this.gmConnection = null;
+        }
+
+        if (this.peer) {
+            try {
+                this.peer.destroy();
+            } catch (error) {
+                console.warn('Error while destroying peer.', error);
+            }
+            this.peer = null;
+        }
+
+        this.currentPeerId = null;
+        this.playerNames = {};
+    }
+
+    private handlePlayerDisconnect(peerId: string): void {
+        delete this.connections[peerId];
+        const playerId = Object.keys(this.playerNames).find(pId => peerId.endsWith(pId));
+        if (playerId) {
+            const name = this.playerNames[playerId];
+            console.log(`Player ${name ?? playerId} (${peerId}) disconnected.`);
+            delete this.playerNames[playerId];
+        }
+    }
+
+    private markMessageProcessed(key: string): boolean {
+        const now = Date.now();
+        const seenAt = this.processedRolls.get(key);
+        if (seenAt !== undefined && now - seenAt < PROCESSED_ROLL_TTL_MS) {
+            return false;
+        }
+
+        this.cleanupProcessedRolls(now);
+        this.processedRolls.set(key, now);
+        return true;
+    }
+
+    private cleanupProcessedRolls(currentTime: number = Date.now()): void {
+        const keysToDelete: string[] = [];
+        this.processedRolls.forEach((timestamp, key) => {
+            if (currentTime - timestamp > PROCESSED_ROLL_TTL_MS) {
+                keysToDelete.push(key);
+            }
+        });
+        keysToDelete.forEach(key => this.processedRolls.delete(key));
+    }
+
     private connectToGm(): void {
-        if (!this.sessionId || !this.peer) return;
+        if (!this.sessionId || !this.peer || (this.gmConnection && this.gmConnection.open)) return;
         const gmPeerId = this.sessionId + GM_PEER_SUFFIX;
         console.log(`Player attempting to connect to GM at ${gmPeerId}`);
         this.gmConnection = this.peer.connect(gmPeerId);
-    
+
         this.gmConnection.on('open', () => {
             console.log('Connection to GM established!');
             this.sendNameUpdate();
@@ -240,40 +309,124 @@ class HeliosDiceRoller {
         });
     }
     
-    private broadcast(data: BroadcastMessage): void {
+    private broadcast(data: BroadcastMessage, options?: { excludePeerId?: string }): void {
         if (this.isGMView) { // GM broadcasts to all players
-            Object.values(this.connections).forEach(conn => conn.send(data));
+            Object.entries(this.connections).forEach(([peerId, conn]) => {
+                if (options?.excludePeerId && peerId === options.excludePeerId) return;
+                const sendToConnection = () => {
+                    try {
+                        conn.send(data);
+                    } catch (error) {
+                        console.warn(`Failed to send data to peer ${peerId}.`, error);
+                        if (!conn.open) {
+                            this.handlePlayerDisconnect(peerId);
+                        }
+                    } finally {
+                        if (typeof conn.off === 'function') {
+                            conn.off('open', sendToConnection);
+                        }
+                    }
+                };
+
+                if (conn.open) {
+                    sendToConnection();
+                } else {
+                    conn.on('open', sendToConnection);
+                }
+            });
         } else if (this.gmConnection) { // Player sends to GM
-            this.gmConnection.send(data);
+            const sendToGm = () => {
+                try {
+                    this.gmConnection?.send(data);
+                } catch (error) {
+                    console.warn('Failed to send data to GM.', error);
+                    if (this.gmConnection && !this.gmConnection.open) {
+                        this.gmConnection = null;
+                    }
+                } finally {
+                    if (this.gmConnection && typeof this.gmConnection.off === 'function') {
+                        this.gmConnection.off('open', sendToGm);
+                    }
+                }
+            };
+
+            if (this.gmConnection.open) {
+                sendToGm();
+            } else {
+                this.gmConnection.on('open', sendToGm);
+            }
         }
     }
-    
-    private handleNetworkData(data: BroadcastMessage): void {
-        if (this.isGMView) {
-            if (data.type === 'name_update') {
-                this.playerNames[data.playerId] = data.name;
-                this.updateLogEntriesForPlayer(data.playerId, data.name);
-                return;
-            }
 
-            if (data.type === 'result') {
-                const uniqueId = data.id + '-result';
-                if (this.processedRolls.has(uniqueId)) return;
-                this.processedRolls.add(uniqueId);
-                
-                const results: Record<DieType, { ones: number, sixes: number, count: number }> = {
+    private handleNetworkData(data: BroadcastMessage, sourcePeerId?: string): void {
+        if (this.isGMView) {
+            switch (data.type) {
+                case 'name_update':
+                    this.playerNames[data.playerId] = data.name;
+                    this.updateLogEntriesForPlayer(data.playerId, data.name);
+                    return;
+                case 'initiate':
+                    if (!this.markMessageProcessed(`${data.id}-initiate`)) return;
+                    this.broadcast(data, { excludePeerId: sourcePeerId });
+                    return;
+                case 'clear':
+                    if (!this.markMessageProcessed(`${data.id}-clear`)) return;
+                    this.removeLogEntriesForPlayer(data.playerId);
+                    this.broadcast(data, { excludePeerId: sourcePeerId });
+                    return;
+                case 'result':
+                    if (!this.markMessageProcessed(`${data.id}-result`)) return;
+
+                    const results: Record<DieType, { ones: number, sixes: number, count: number }> = {
+                        [DieType.Attribute]: { ones: 0, sixes: 0, count: 0 },
+                        [DieType.Skill]: { ones: 0, sixes: 0, count: 0 },
+                        [DieType.Bonus]: { ones: 0, sixes: 0, count: 0 },
+                    };
+                    data.diceStates.forEach(state => {
+                        results[state.type].count++;
+                        if (state.result === 1) results[state.type].ones++;
+                        if (state.result === 6) results[state.type].sixes++;
+                    });
+                    this.updateRollLog(results, data.playerId, data.isReroll);
+                    return;
+            }
+            return;
+        }
+
+        switch (data.type) {
+            case 'initiate':
+                if (!this.markMessageProcessed(`${data.id}-initiate`)) return;
+                this.executeRoll(data);
+                return;
+            case 'clear':
+                if (!this.markMessageProcessed(`${data.id}-clear`)) return;
+                this.clearPlayerDice(data.playerId);
+                if (data.playerId === this.playerId) {
+                    this.clearResults();
+                    this.rerollUsed = false;
+                    this.rerollButton.style.display = 'inline-block';
+                }
+                return;
+            case 'result':
+                if (data.playerId !== this.playerId) return;
+                if (!this.markMessageProcessed(`${data.id}-result`)) return;
+                this.clearResults();
+                const statesByType: Record<DieType, { ones: number, sixes: number, count: number }> = {
                     [DieType.Attribute]: { ones: 0, sixes: 0, count: 0 },
                     [DieType.Skill]: { ones: 0, sixes: 0, count: 0 },
                     [DieType.Bonus]: { ones: 0, sixes: 0, count: 0 },
                 };
                 data.diceStates.forEach(state => {
-                    results[state.type].count++;
-                    if (state.result === 1) results[state.type].ones++;
-                    if (state.result === 6) results[state.type].sixes++;
+                    const bucket = statesByType[state.type];
+                    bucket.count++;
+                    if (state.result === 1) bucket.ones++;
+                    if (state.result === 6) bucket.sixes++;
                 });
-                this.updateRollLog(results, data.playerId, data.isReroll);
-            }
-        } 
+                this.attributeResults.innerHTML = `<span class="crit">Erfolge (6er): ${statesByType[DieType.Attribute].sixes}</span>${(statesByType[DieType.Attribute].ones > 0 ? `<span class="fail">Patzer (1er): ${statesByType[DieType.Attribute].ones}</span>` : '')}`;
+                this.skillResults.innerHTML = `<span class="crit">Erfolge (6er): ${statesByType[DieType.Skill].sixes}</span>`;
+                this.bonusResults.innerHTML = `<span class="crit">Erfolge (6er): ${statesByType[DieType.Bonus].sixes}</span>${(statesByType[DieType.Bonus].ones > 0 ? `<span class="fail">Patzer (1er): ${statesByType[DieType.Bonus].ones}</span>` : '')}`;
+                return;
+        }
     }
 
     private updatePlayAreaSize(): void {
@@ -451,6 +604,12 @@ class HeliosDiceRoller {
     }
 
     private createDieTexture(value: number, config: DieConfig): THREE.CanvasTexture {
+        const cacheKey = `${config.type}-${value}`;
+        const cachedTexture = this.dieTextureCache.get(cacheKey);
+        if (cachedTexture) {
+            return cachedTexture;
+        }
+
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d')!;
         canvas.width = 128;
@@ -479,7 +638,10 @@ class HeliosDiceRoller {
             context.font = 'bold 80px Orbitron, sans-serif';
             context.fillText(String(value), canvas.width / 2, canvas.height / 2);
         }
-        return new THREE.CanvasTexture(canvas);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        this.dieTextureCache.set(cacheKey, texture);
+        return texture;
     }
     
     private createDie(type: DieType, playerId: string, addToPhysics: boolean = true): DieObject {
@@ -533,6 +695,7 @@ class HeliosDiceRoller {
                 id: clearId,
                 playerId: this.playerId,
             };
+            this.markMessageProcessed(`${clearId}-clear`);
             this.broadcast(payload);
             this.clearPlayerDice(this.playerId); // Clear our own dice immediately
         }
@@ -574,7 +737,9 @@ class HeliosDiceRoller {
             dice: diceList,
             clearScreen: !isReroll
         };
-    
+
+        this.markMessageProcessed(`${rollId}-initiate`);
+
         if (existingDiceToKeep) {
             this.clearDice(existingDiceToKeep);
         }
@@ -820,6 +985,12 @@ class HeliosDiceRoller {
         });
     }
 
+    private removeLogEntriesForPlayer(playerId: string): void {
+        if (!this.isGMView) return;
+        const entries = this.rollLogContainer.querySelectorAll(`.roll-log-entry[data-player-id="${playerId}"]`);
+        entries.forEach(entry => entry.remove());
+    }
+
     private updateRollLog(results: Record<DieType, { ones: number, sixes: number, count: number }>, playerId: string, isReroll: boolean): void {
         const totalSuccesses = results[DieType.Attribute].sixes + results[DieType.Skill].sixes + results[DieType.Bonus].sixes;
         const playerNameRaw = this.playerNames[playerId] || `Spieler ${playerId.replace('player', '')}`;
@@ -913,7 +1084,7 @@ class HeliosDiceRoller {
         const deltaTime = this.clock.getDelta();
         requestAnimationFrame(this.animate.bind(this));
         
-        if (!document.body.classList.contains('is-launcher')) {
+        if (!document.body.classList.contains('is-launcher') && !this.isGMView) {
             const fixedTimeStep = 1 / 60;
             this.physicsWorld.step(fixedTimeStep, deltaTime);
         }
